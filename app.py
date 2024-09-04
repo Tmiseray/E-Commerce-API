@@ -71,20 +71,22 @@ class OrderDetail(db.Model):
     __tablename__ = 'OrderDetails'
     order_id = db.Column(db.Integer, db.ForeignKey('Orders.id'), primary_key=True)
     product_id = db.Column(db.Integer, db.ForeignKey('Products.id'), primary_key=True)
+    product_name = db.Column(db.String, nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
     price_per_unit = db.Column(db.Numeric(precision=10, scale=2), nullable=False)
 
     order = db.relationship('Order', back_populates='order_details')
-    product = db.relationship('Product', back_populates='order_details')
+    product = db.relationship('Product', back_populates='order_details', primaryjoin='OrderDetail.product_id == Product.id')
 
 class OrderDetailSchema(ma.Schema):
     order_id = fields.Integer(required=False)
     product_id = fields.Integer(required=False)
+    product_name = fields.String(required=False)
     quantity = fields.Integer(required=True)
     price_per_unit = fields.Float(required=False)
 
     class Meta:
-        fields = ('order_id', 'product_id', 'quantity', 'price_per_unit')
+        fields = ('order_id', 'product_id', 'product_name', 'quantity', 'price_per_unit')
 
 order_detail_schema = OrderDetailSchema()
 order_details_schema = OrderDetailSchema(many=True)
@@ -94,23 +96,33 @@ order_details_schema = OrderDetailSchema(many=True)
 class Order(db.Model):
     __tablename__ = 'Orders'
     id = db.Column(db.Integer, primary_key=True)
-    customer_id = db.Column(db.Integer, db.ForeignKey('Customers.id'))
+    customer_id = db.Column(db.Integer, db.ForeignKey('Customers.id'), nullable=False)
     order_date_time = db.Column(db.DateTime, default=datetime.now(timezone.utc), nullable=False)
-    # expected_delivery_date = db.Column(db.Date, default=((order_date_time.date())+timedelta(days=5)), nullable=False)
+    expected_delivery_date = db.Column(db.Date, nullable=False)
     total_amount = db.Column(db.Numeric(precision=10, scale=2), nullable=False)
 
     customer = db.relationship('Customer', back_populates='order', overlaps='order')
     order_details = db.relationship('OrderDetail', back_populates='order')
 
+    def __init__(self, customer_id, total_amount, order_date_time=None):
+        self.customer_id = customer_id
+        self.total_amount = total_amount
+        self.order_date_time = order_date_time if order_date_time else datetime.now(timezone.utc)
+        self.expected_delivery_date = self.calculate_expected_delivary_date()
+
+    def calculate_expected_delivary_date(self):
+        return (self.order_date_time + timedelta(days=5)).date()
+
 class OrderSchema(ma.Schema):
     customer_id = fields.Integer(required=True)
-    # order_date_time = fields.DateTime(dump_only=True)
-    # total_amount = fields.Float(dump_only=True)
+    order_date_time = fields.DateTime(dump_only=True)
+    expected_delivery_date = fields.Date(dump_only=True)
+    total_amount = fields.Float(dump_only=True)
     order_details = fields.List(fields.Nested(OrderDetailSchema), required=True)
 
     class Meta:
-        # load_instance = True
-        fields = ('customer_id', 'order_details')
+        load_instance = True
+        fields = ('customer_id', 'order_date_time', 'expected_delivery_date', 'total_amount', 'order_details')
 
 order_schema = OrderSchema()
 orders_schema = OrderSchema(many=True)
@@ -125,7 +137,7 @@ class Product(db.Model):
     is_active = db.Column(db.Boolean, default=True)
 
     catalog_entries = db.relationship('Catalog', back_populates='associated_product', overlaps='catalog')
-    order_details = db.relationship('OrderDetail', back_populates='product')
+    order_details = db.relationship('OrderDetail', back_populates='product', primaryjoin='Product.id == OrderDetail.product_id')
 
     def deactivate(self):
         self.is_active = False
@@ -400,16 +412,28 @@ def get_full_catalog():
     full_catalog = Catalog.query.all()
     return catalogs_schema.jsonify(full_catalog)
 
-@app.route('/catalog/check-stock', methods=['GET'])
+@app.route('/catalog/stock-monitor', methods=['POST'])
 def monitor_stock_levels():
     stock_threshold = 10
     restock_days_threshold = 7
     low_stock_products = Catalog.query.filter(Catalog.product_stock.between(1, stock_threshold-1)).all()
+
+    response_data = {
+        "message": None,
+        "Products Below Threshold": [],
+        "Restocking Details": []
+    }
+
     if low_stock_products:
-        print("* Products Below Stock Threshold: *")
+        response_data['message'] = "Stock levels checked and restocked where necessary"
         for catalog_entry in low_stock_products:
-            product_name = catalog_entry.product.name if catalog_entry.product else "Unknown"
-            print(f"Product: {product_name}\n\t~ Product ID: {catalog_entry.product_id}\n\t- Stock Level: {catalog_entry.product_stock}")
+            product = Product.query.filter_by(id = catalog_entry.product_id).first()
+            product_data = {
+                "product_name": product.name,
+                "product_id": catalog_entry.product_id,
+                "product_stock": catalog_entry.product_stock
+            }
+            response_data['Products Below Threshold'].append(product_data)
 
             # Check last restock date
             if catalog_entry.last_restock_date:
@@ -424,8 +448,15 @@ def monitor_stock_levels():
                 catalog_entry.product_stock += restock_quantity
                 catalog_entry.last_restock_date = date.today()
                 db.session.commit()
-                print(f"Restocked Product ID: {catalog_entry.product_id}\n- New Stock Quantity: {catalog_entry.product_stock}")
-    return jsonify({"message": "Stock levels checked and restocked where necessary"}), 200
+                restock_data = {
+                    "product_id": catalog_entry.product_id,
+                    "new_stock_quantity": catalog_entry.product_stock
+                }
+                response_data['Restocking Details'].append(restock_data)
+    else:
+        response_data['message'] = f"No products below stock threshold: {stock_threshold}"
+        
+    return jsonify(response_data), 201 if response_data['message'] == "Stock levels checked and restocked where necessary" else 404
             
 @app.route('/catalog/update-stock/specified-product', methods=['POST'])
 def update_stock_by_product_id():
@@ -440,7 +471,7 @@ def update_stock_by_product_id():
     catalog_entry.product_stock = catalog_data['product_stock']
     db.session.commit()
 
-    return jsonify({"message": f"Successfully updated stock in catalog for Product ID: {product_id}"}), 200
+    return jsonify({"message": f"Successfully updated stock in catalog for Product ID: {product_id}, New Stock Level: {catalog_entry.product_stock}"}), 200
 
 
 ### Order Endpoints & Methods ###
@@ -448,6 +479,19 @@ def update_stock_by_product_id():
 def place_order():
     try:
         order_data = order_schema.load(request.json)
+        # order_items = order_data.get('order_details', [])
+
+        # Validate order details manually
+        # validated_order_items = []
+        # for item in order_items:
+        #     if 'product_id' not in item and 'product_name' not in item:
+        #         return jsonify({"error": "Either product_id or product_name must be provided for each item"}), 400
+        #     if 'quantity' not in item:
+        #         return jsonify({"error": "Quantity is required for each item"}), 400
+        #     validated_order_items.append(item)
+
+        # order_data['order_details'] = validated_order_items
+        # order_data = order_schema.load(order_data)
     except ValidationError as ve:
         return jsonify(ve.messages), 400
     
@@ -456,7 +500,7 @@ def place_order():
     
     if not customer_id or not order_items:
         return jsonify({"error": "Missing customer_id or order_details"}), 400
-    
+
     # Create new order record, order_date_time is set automatically
     new_order = Order(
         customer_id = customer_id,
@@ -488,6 +532,7 @@ def place_order():
         order_detail = OrderDetail(
             order_id = new_order.id,
             product_id = product.id,
+            product_name = product.name,
             quantity = quantity,
             price_per_unit = float(product.price)
         )
@@ -511,7 +556,9 @@ def place_order():
     return jsonify({
         "message": "Order placed successfully",
         "order_id": new_order.id,
-        "order_details": order_details_data
+        "order_date_time": new_order.order_date_time,
+        "order_details": order_details_data,
+        "total_amount": new_order.total_amount
     }), 201
 
 @app.route('/orders/<int:id>', methods=['GET'])
@@ -530,7 +577,7 @@ def track_order_by_id():
         customer_id = customer_id
         order_date_time = order.order_date_time
         expected_delivery_date = order_date_time.date()+timedelta(days=5)
-        if order_date_time.date() < date.today() < (order_date_time.date()+timedelta(days=3)):
+        if order_date_time.date() <= date.today() < (order_date_time.date()+timedelta(days=3)):
             status = "Order in process"
         if (order_date_time.date()+timedelta(days=3)) <= date.today() < expected_delivery_date:
             status = "Shipped"
@@ -539,14 +586,14 @@ def track_order_by_id():
         if date.today() > expected_delivery_date:
             status = "Complete"
 
-    return jsonify({
-        "message": "Order tracking information",
-        "customer_id": customer_id,
-        "order_id": order_id,
-        "order_date_time": order_date_time,
-        "expected_delivery_date": expected_delivery_date,
-        "status": status
-    }), 200
+        return jsonify({
+            "message": "Order tracking information",
+            "customer_id": customer_id,
+            "order_id": order_id,
+            "order_date_time": order_date_time,
+            "expected_delivery_date": expected_delivery_date,
+            "status": status
+        }), 200
 
 # TODO BONUS retrieve order history for customer
 @app.route('/orders/history-for-customer', methods=['POST'])

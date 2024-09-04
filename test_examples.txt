@@ -135,4 +135,228 @@ Value: 4
 }
 ** Success
 
-10. 
+10. Place Order:
+JSON Body:
+{
+    "customer_id": 2,
+    "order_details": [
+        {
+            "product_id": 3,
+            "quantity": 11
+        },
+        {
+            "product_name": "MacBook Pro",
+            "quantity": 20
+        },
+        {
+            "product_id": 1,
+            "quantity": 11
+        }
+    ]
+}
+** Unsuccessful! "error": "Insufficient stock for 20 MacBook Pro"
+** Checks the catalog stock to ensure the quantity of item is available
+
+JSON Body:
+{
+    "customer_id": 2,
+    "order_details": [
+        {
+            "product_id": 3,
+            "quantity": 11
+        },
+        {
+            "product_name": "MacBook Pro",
+            "quantity": 10
+        },
+        {
+            "product_id": 1,
+            "quantity": 11
+        }
+    ]
+}
+** Success!
+{
+    "message": "Order placed successfully",
+    "order_details": [
+        {
+            "order_id": 5,
+            "price_per_unit": 19.99,
+            "product_id": 3,
+            "product_name": "webcam",
+            "quantity": 11
+        },
+        {
+            "order_id": 5,
+            "price_per_unit": 1699.99,
+            "product_id": 4,
+            "product_name": "MacBook Pro",
+            "quantity": 10
+        },
+        {
+            "order_id": 5,
+            "price_per_unit": 19.99,
+            "product_id": 1,
+            "product_name": "gaming keyboard",
+            "quantity": 11
+        }
+    ],
+    "order_id": 5
+}
+
+** Updated JSON Results to include order_date_time
+
+JSON Body:
+{
+    "customer_id": 3,
+    "order_details": [
+        {
+            "product_id": 2,
+            "quantity": 8
+        },
+        {
+            "product_name": "webcam",
+            "quantity": 5
+        },
+        {
+            "product_id": 4,
+            "quantity": 1
+        }
+    ]
+}
+** Success!
+{
+    "message": "Order placed successfully",
+    "order_date_time": "Wed, 04 Sep 2024 17:41:43 GMT",
+    "order_details": [
+        {
+            "order_id": 7,
+            "price_per_unit": 8.99,
+            "product_id": 2,
+            "product_name": "mouse",
+            "quantity": 8
+        },
+        {
+            "order_id": 7,
+            "price_per_unit": 19.99,
+            "product_id": 3,
+            "product_name": "webcam",
+            "quantity": 5
+        },
+        {
+            "order_id": 7,
+            "price_per_unit": 1699.99,
+            "product_id": 4,
+            "product_name": "MacBook Pro",
+            "quantity": 1
+        }
+    ],
+    "order_id": 7
+}
+
+11. Get Order by ID:
+URL:
+http://127.0.0.1:5000/orders/7
+Results:
+{
+    "customer_id": 3,
+    "expected_delivery_date": "2024-09-09",
+    "order_date_time": "2024-09-04T17:41:43",
+    "order_details": [
+        {
+            "order_id": 7,
+            "price_per_unit": 8.99,
+            "product_id": 2,
+            "product_name": "mouse",
+            "quantity": 8
+        },
+        {
+            "order_id": 7,
+            "price_per_unit": 19.99,
+            "product_id": 3,
+            "product_name": "webcam",
+            "quantity": 5
+        },
+        {
+            "order_id": 7,
+            "price_per_unit": 1699.99,
+            "product_id": 4,
+            "product_name": "MacBook Pro",
+            "quantity": 1
+        }
+    ],
+    "total_amount": 1871.86
+}
+** Success
+
+11. Track Order Status:
+Query Params:
+Key: order_id
+Value: 7
+Key: customer_id
+Value: 3
+Results:
+{
+    "customer_id": "3",
+    "expected_delivery_date": "Mon, 09 Sep 2024 00:00:00 GMT",
+    "message": "Order tracking information",
+    "order_date_time": "Wed, 04 Sep 2024 17:41:43 GMT",
+    "order_id": "7",
+    "status": "Order in process"
+}
+** Success!
+
+12. Update Stock by Product ID:
+Query Params:
+Key: product_id
+Value: 4
+JSON Request:
+{
+    "product_stock": 6
+}
+RESULT:
+{
+    "message": "Successfully updated stock in catalog for Product ID: 4, New Stock Level: 6"
+}
+
+13. Monitor Stock Levels:
+
+product_info = {
+    "product_name": product.name,
+    "product_id": catalog_entry.product_id,
+    "product_stock": catalog_entry.product_stock
+}
+
+restock_info = {
+    "product_id": catalog_entry.product_id,
+    "new_stock_quantity": catalog_entry.product_stock
+}
+
+{
+    "message": "Stock levels checked and restocked where necessary",
+    "Products Below Stock Threshold": [
+        {
+            "product_name": product.name,
+            "product_id": catalog_entry.product_id,
+            "product_stock": catalog_entry.product_stock
+        },
+        {
+            "product_name": product.name,
+            "product_id": catalog_entry.product_id,
+            "product_stock": catalog_entry.product_stock
+        }
+    ],
+    "Restocking Details": [
+        {
+            "product_id": catalog_entry.product_id,
+            "new_stock_quantity": catalog_entry.product_stock        
+        },
+        {
+            "product_id": catalog_entry.product_id,
+            "new_stock_quantity": catalog_entry.product_stock        
+        }
+    ]
+}
+
+14. Order History by Customer ID:
+
