@@ -5,7 +5,7 @@ from flask_bcrypt import bcrypt
 from marshmallow import fields, validate
 from marshmallow import ValidationError
 from datetime import datetime, date, timezone, timedelta
-from password import my_password
+from password import my_password    # <-- Ensure to update password.py with your own
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+mysqlconnector://root:{my_password}@localhost/ecommerce_db'
