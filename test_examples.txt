@@ -253,6 +253,58 @@ JSON Body:
     ],
     "order_id": 7
 }
+** Success
+
+JSON Body:
+{
+    "customer_id": 2,
+    "order_details": [
+        {
+            "product_id": 1,
+            "quantity": 8
+        },
+        {
+            "product_name": "mouse",
+            "quantity": 13
+        },
+        {
+            "product_id": 4,
+            "quantity": 1
+        }
+    ]
+}
+
+RESULTS:
+{
+    "message": "Order placed successfully",
+    "order_date_time": "Wed, 04 Sep 2024 20:34:41 GMT",
+    "order_details": [
+        {
+            "order_id": 8,
+            "price_per_unit": 19.99,
+            "product_id": 1,
+            "product_name": "gaming keyboard",
+            "quantity": 8
+        },
+        {
+            "order_id": 8,
+            "price_per_unit": 8.99,
+            "product_id": 2,
+            "product_name": "mouse",
+            "quantity": 13
+        },
+        {
+            "order_id": 8,
+            "price_per_unit": 1699.99,
+            "product_id": 4,
+            "product_name": "MacBook Pro",
+            "quantity": 1
+        }
+    ],
+    "order_id": 8,
+    "total_amount": "1976.78"
+}
+
 
 11. Get Order by ID:
 URL:
@@ -320,43 +372,229 @@ RESULT:
 }
 
 13. Monitor Stock Levels:
-
-product_info = {
-    "product_name": product.name,
-    "product_id": catalog_entry.product_id,
-    "product_stock": catalog_entry.product_stock
-}
-
-restock_info = {
-    "product_id": catalog_entry.product_id,
-    "new_stock_quantity": catalog_entry.product_stock
-}
-
+RESULTS:
 {
-    "message": "Stock levels checked and restocked where necessary",
-    "Products Below Stock Threshold": [
+    "Products Below Threshold": [
         {
-            "product_name": product.name,
-            "product_id": catalog_entry.product_id,
-            "product_stock": catalog_entry.product_stock
+            "product_id": 1,
+            "product_name": "gaming keyboard",
+            "product_stock": 6
         },
         {
-            "product_name": product.name,
-            "product_id": catalog_entry.product_id,
-            "product_stock": catalog_entry.product_stock
+            "product_id": 2,
+            "product_name": "mouse",
+            "product_stock": 9
         }
     ],
     "Restocking Details": [
         {
-            "product_id": catalog_entry.product_id,
-            "new_stock_quantity": catalog_entry.product_stock        
+            "new_stock_quantity": 26,
+            "product_id": 1
         },
         {
-            "product_id": catalog_entry.product_id,
-            "new_stock_quantity": catalog_entry.product_stock        
+            "new_stock_quantity": 29,
+            "product_id": 2
         }
-    ]
+    ],
+    "message": "Stock levels checked and restocked where necessary"
 }
+** Success
+
+.~* Attempt when full stock *~.
+{
+    "Products Below Threshold": [],
+    "Restocking Details": [],
+    "message": "No products below stock threshold: 10"
+}
+** Success
 
 14. Order History by Customer ID:
 
+Query Params:
+Key: customer_id
+Value: 2
+RESULTS:
+[
+    {
+        "order_date_time": "Wed, 04 Sep 2024 17:36:40 GMT",
+        "order_details": [
+            {
+                "order_id": 5,
+                "price_per_unit": 19.99,
+                "product_id": 1,
+                "product_name": "gaming keyboard",
+                "quantity": 11
+            },
+            {
+                "order_id": 5,
+                "price_per_unit": 19.99,
+                "product_id": 3,
+                "product_name": "webcam",
+                "quantity": 11
+            },
+            {
+                "order_id": 5,
+                "price_per_unit": 1699.99,
+                "product_id": 4,
+                "product_name": "MacBook Pro",
+                "quantity": 10
+            }
+        ],
+        "order_id": 5,
+        "total_amount": "17439.68"
+    },
+    {
+        "order_date_time": "Wed, 04 Sep 2024 20:34:41 GMT",
+        "order_details": [
+            {
+                "order_id": 8,
+                "price_per_unit": 19.99,
+                "product_id": 1,
+                "product_name": "gaming keyboard",
+                "quantity": 8
+            },
+            {
+                "order_id": 8,
+                "price_per_unit": 8.99,
+                "product_id": 2,
+                "product_name": "mouse",
+                "quantity": 13
+            },
+            {
+                "order_id": 8,
+                "price_per_unit": 1699.99,
+                "product_id": 4,
+                "product_name": "MacBook Pro",
+                "quantity": 1
+            }
+        ],
+        "order_id": 8,
+        "total_amount": "1976.78"
+    }
+]
+** Success
+
+15. Soft Delete Product:
+Query Params:
+Key: id
+Value: 3
+
+RESULTS:
+{
+    "message": "Successfully deactivated product from catalog"
+}
+** Success!
+* Using Soft Delte methods ensure if there are orders in progress or the product is in a customer's order history, they will still be able to see the details without another customer being able to order an unavailable product
+
+* Checking Catalog:
+Get Full Catalog:
+[
+    {
+        "product_id": 1,
+        "product_stock": 26
+    },
+    {
+        "product_id": 2,
+        "product_stock": 29
+    },
+    {
+        "product_id": 3,
+        "product_stock": 0
+    },
+    {
+        "product_id": 4,
+        "product_stock": 25
+    }
+]
+
+* Checking Active Products in Catalog:
+[
+    {
+        "product_id": 1,
+        "product_stock": 26
+    },
+    {
+        "product_id": 2,
+        "product_stock": 29
+    },
+    {
+        "product_id": 4,
+        "product_stock": 25
+    }
+]
+
+*Checking Customers Orders:
+[
+    {
+        "order_date_time": "Wed, 04 Sep 2024 17:36:40 GMT",
+        "order_details": [
+            {
+                "order_id": 5,
+                "price_per_unit": 19.99,
+                "product_id": 1,
+                "product_name": "gaming keyboard",
+                "quantity": 11
+            },
+            {
+                "order_id": 5,
+                "price_per_unit": 19.99,
+                "product_id": 3,
+                "product_name": "webcam",
+                "quantity": 11
+            },
+            {
+                "order_id": 5,
+                "price_per_unit": 1699.99,
+                "product_id": 4,
+                "product_name": "MacBook Pro",
+                "quantity": 10
+            }
+        ],
+        "order_id": 5,
+        "total_amount": "17439.68"
+    },
+    {
+        "order_date_time": "Wed, 04 Sep 2024 20:34:41 GMT",
+        "order_details": [
+            {
+                "order_id": 8,
+                "price_per_unit": 19.99,
+                "product_id": 1,
+                "product_name": "gaming keyboard",
+                "quantity": 8
+            },
+            {
+                "order_id": 8,
+                "price_per_unit": 8.99,
+                "product_id": 2,
+                "product_name": "mouse",
+                "quantity": 13
+            },
+            {
+                "order_id": 8,
+                "price_per_unit": 1699.99,
+                "product_id": 4,
+                "product_name": "MacBook Pro",
+                "quantity": 1
+            }
+        ],
+        "order_id": 8,
+        "total_amount": "1976.78"
+    }
+]
+
+* Checking Order Tracker:
+Query Params:
+Key: order_id
+Value: 5
+Key: customer_id
+Value: 2
+{
+    "customer_id": "2",
+    "expected_delivery_date": "Mon, 09 Sep 2024 00:00:00 GMT",
+    "message": "Order tracking information",
+    "order_date_time": "Wed, 04 Sep 2024 17:36:40 GMT",
+    "order_id": "5",
+    "status": "Order in process"
+}
+**** SUCCESS ****

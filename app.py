@@ -175,6 +175,7 @@ class Catalog(db.Model):
 
     def deactivate_product(self):
         self.product_stock = 0
+        self.associated_product.is_active = False
         db.session.commit()
 
 class CatalogSchema(ma.Schema):
@@ -401,7 +402,7 @@ def add_product_to_catalog():
 
 @app.route('/catalog/active-products', methods=['GET'])
 def get_active_catalog_products():
-    active_catalog = Catalog.query.filter(Product.is_active == True).all()
+    active_catalog = Catalog.query.join(Catalog.associated_product).filter(Product.is_active == True).all()
     if active_catalog:
         return catalogs_schema.jsonify(active_catalog)
     else:
@@ -437,7 +438,7 @@ def monitor_stock_levels():
 
             # Check last restock date
             if catalog_entry.last_restock_date:
-                days_since_last_restock = (date.today() - catalog_entry.last_restock_date).days
+                days_since_last_restock = (datetime.now(timezone.utc) - catalog_entry.last_restock_date).days
             else:
                 # Force restock
                 days_since_last_restock = restock_days_threshold + 1
@@ -446,7 +447,7 @@ def monitor_stock_levels():
             if days_since_last_restock > restock_days_threshold:
                 restock_quantity = 20
                 catalog_entry.product_stock += restock_quantity
-                catalog_entry.last_restock_date = date.today()
+                catalog_entry.last_restock_date = datetime.now(timezone.utc)
                 db.session.commit()
                 restock_data = {
                     "product_id": catalog_entry.product_id,
