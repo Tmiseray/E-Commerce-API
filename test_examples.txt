@@ -1,0 +1,138 @@
+
+1. Add Customer:
+{
+    "name": "Jane Doe",
+    "email": "jane.doe@example.com",
+    "phone": "1234567890"
+}
+{
+    "name": "John Smith",
+    "email": "john.smith@example.com",
+    "phone": "9876543210"
+}
+{
+    "name": "Jim Doe",
+    "email": "jim.doe@example.com",
+    "phone": "3216549870"
+}
+{
+    "name": "Mary Smith",
+    "email": "mary.smith@example.com",
+    "phone": "7894561230"
+}
+
+
+2. Get Customer by ID
+Query Params:
+Key: id
+Value: 1
+
+
+3. Update Customer:
+http://127.0.0.1:5000/customers/1
+{
+    "name": "Jane Doe",
+    "email": "jane.doe@example.com",
+    "phone": "1234567890"
+}
+** Completes process even if it has not changed
+
+{
+    "name": "Jane Dough",
+    "email": "jane.dough@example.com"
+}
+** If data incomplete, it will still update due to Schema fields(email, phone) required=False
+** Also setup for retrieving current data if nothing is being changed
+
+
+4. Create Customer Account:
+{
+    "customer_id": 2,
+    "username": "john",
+    "password": "john"
+}
+** notifies that each key is shorter than minimum length
+
+{
+    "customer_id": 2,
+    "username": "john_boy",
+    "password": "Mary_is_my_world"
+}
+
+5. Get (Customer) Account:
+Query Params:
+Key: customer_id
+Value: 2
+{
+    "customer_id": 2,
+    "password": "$2b$12$WNg48Nf2JvR5jy4CKz7SS.VEtbh6uFZf3CwcxHlHHLxphLMhOYYMW",
+    "username": "john_boy"
+}
+** Only returns HASHED password for additional security
+
+6. Update (Customer) Account:
+Query Params:
+Key: customer_id
+Value: 2
+{
+    "password": "My"
+}
+** notifies the key is too shorter
+
+{
+    "password": "My_heart_belongs_to_Mary"
+}
+** Successful message! Due to differentiating schemas for creation and updating accounts, the application will still update the singular field. Checks if any/each field exists
+
+7. Add Product:
+{
+    "name": "gaming keyboard",
+    "price": 15.99
+}
+{
+    "name": "mouse",
+    "price": 8.99
+}
+{
+    "name": "webcam",
+    "price": 19.99
+}
+{
+    "name": "MacBook Pro",
+    "price": 1699.99
+}
+
+8. Update Product:
+{
+    "price": 19.99
+}
+** Success! Due to different schema for updates, you can update one section versus having to type each field
+
+9. Update Stock by Product ID:
+Query Params:
+Key: product_id
+Value: 1
+{
+    "product_stock": 25
+}
+Query Params:
+Key: product_id
+Value: 2
+{
+    "product_stock": 30
+}
+Query Params:
+Key: product_id
+Value: 3
+{
+    "product_stock": 20
+}
+Query Params:
+Key: product_id
+Value: 4
+{
+    "product_stock": 15
+}
+** Success
+
+10. 

@@ -20,8 +20,8 @@ class Customer(db.Model):
     email = db.Column(db.String(300), unique=True, nullable=False)
     phone = db.Column(db.String(15), nullable=False)
 
-    account = db.relationship('CustomerAccount', backref='customer')
-    order = db.relationship('Order', backref='customer')
+    account = db.relationship('CustomerAccount', back_populates='linked_customer', uselist=False)
+    order = db.relationship('Order', back_populates='customer', overlaps='customer_order')
 
 class CustomerSchema(ma.Schema):
     name = fields.String(required=True)
@@ -31,27 +31,40 @@ class CustomerSchema(ma.Schema):
     class Meta:
         fields = ('name', 'email', 'phone', 'id')
 
+class UpdateCustomerSchema(ma.Schema):
+    name = fields.String(required=False)
+    email = fields.String(required=False)
+    phone = fields.String(required=False)
+
+    class Meta:
+        fields = ('name', 'email', 'phone', 'id')
+
 customer_schema = CustomerSchema()
 customers_schema = CustomerSchema(many=True)
-
+update_customer_schema = UpdateCustomerSchema()
 
 ### CustomerAccounts Model & Schema ###
 class CustomerAccount(db.Model):
     __tablename__ = 'CustomerAccounts'
-    customer_id = db.Column(db.Integer, db.ForeignKey('Customers.id'))
+    customer_id = db.Column(db.Integer, db.ForeignKey('Customers.id'), primary_key=True)
     username = db.Column(db.String(75), unique=True, nullable=False)
     password = db.Column(db.String(300), nullable=False)
 
-    customer = db.relationship('Customer', backref='customer_account', uselist=False, lazy=True)
+    linked_customer = db.relationship('Customer', back_populates='account')
 
-class CustomerAccountSchema(ma.Schema):
+class AccountSchema(ma.Schema):
     customer_id = fields.Integer(required=True)
     username = fields.String(required=True, validate=validate.Length(min=8))
     password = fields.String(required=True, validate=validate.Length(min=16))
-    # TODO maybe add back load_only=True
 
-account_schema = CustomerAccountSchema()
+# Schema specifically for account updates
+class UpdateAccountSchema(ma.Schema):
+    customer_id = fields.Integer(required=False)
+    username = fields.String(required=False, validate=validate.Length(min=8))
+    password = fields.String(required=False, validate=validate.Length(min=16))
 
+update_account_schema = UpdateAccountSchema()
+account_schema = AccountSchema()
 
 ### OrderDetails Model & Schema ###
 class OrderDetail(db.Model):
@@ -65,31 +78,16 @@ class OrderDetail(db.Model):
     product = db.relationship('Product', back_populates='order_details')
 
 class OrderDetailSchema(ma.Schema):
-    order_id = fields.Integer(required=True)
-    product_id = fields.Integer(required=True)
-    product_name = fields.Method('get_product_name')
+    order_id = fields.Integer(required=False)
+    product_id = fields.Integer(required=False)
     quantity = fields.Integer(required=True)
-    price_per_unit = fields.Float(required=True)
-
-    def get_product_name(self, obj):
-        return obj.product.name if obj.product else None
+    price_per_unit = fields.Float(required=False)
 
     class Meta:
-        fields = ('order_id', 'product_id', 'product_name', 'quantity', 'price_per_unit')
+        fields = ('order_id', 'product_id', 'quantity', 'price_per_unit')
 
 order_detail_schema = OrderDetailSchema()
 order_details_schema = OrderDetailSchema(many=True)
-
-
-### OrderItem Schema ###
-class OrderItemSchema(ma.Schema):
-    product_id = fields.Integer(required=False)
-    product_name = fields.String(required=False)
-    quantity = fields.Integer(required=True, validate=validate.Range(min=1))
-
-    def validate_product_id_or_name(self, value, data, **kwargs):
-        if not value and not data.get('product_name'):
-            raise ValidationError('Either product_id or product_name must be provided')
 
 
 ### Orders Model & Schema ###
@@ -98,10 +96,10 @@ class Order(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     customer_id = db.Column(db.Integer, db.ForeignKey('Customers.id'))
     order_date_time = db.Column(db.DateTime, default=datetime.now(timezone.utc), nullable=False)
-    expected_delivery_date = db.Column(db.Date, default=(order_date_time.date()+timedelta(days=5)), nullable=False)
-    total_amount = db.Column(db.Numeric(precision=20, scale=2), nullable=False)
+    # expected_delivery_date = db.Column(db.Date, default=((order_date_time.date())+timedelta(days=5)), nullable=False)
+    total_amount = db.Column(db.Numeric(precision=10, scale=2), nullable=False)
 
-    customer = db.relationship('Customer', backref='orders')
+    customer = db.relationship('Customer', back_populates='order', overlaps='order')
     order_details = db.relationship('OrderDetail', back_populates='order')
 
 class OrderSchema(ma.Schema):
@@ -118,13 +116,6 @@ order_schema = OrderSchema()
 orders_schema = OrderSchema(many=True)
 
 
-# ### OrderDetails Many-to-Many Association Table ###
-# order_details = db.Table('OrderDetails',
-#     db.Column('order_id', db.Integer, db.ForeignKey('Orders.id'), primary_key=True),
-#     db.Column('product_id', db.Integer, db.ForeignKey('Products.id'))
-#     )
-
-
 ### Products Model & Schema ###
 class Product(db.Model):
     __tablename__ = 'Products'
@@ -133,7 +124,7 @@ class Product(db.Model):
     price = db.Column(db.Numeric(precision=10, scale=2), nullable=False)
     is_active = db.Column(db.Boolean, default=True)
 
-    catalog = db.relationship('Catalog', backref='product', cascade='all, delete-orphan', lazy=True)
+    catalog_entries = db.relationship('Catalog', back_populates='associated_product', overlaps='catalog')
     order_details = db.relationship('OrderDetail', back_populates='product')
 
     def deactivate(self):
@@ -148,18 +139,27 @@ class ProductSchema(ma.Schema):
     class Meta:
         fields = ('name', 'price', 'is_active', 'id')
 
+class UpdateProductSchema(ma.Schema):
+    name = fields.String(required=False, validate=validate.Length(min=1))
+    price = fields.Float(required=False, validate=validate.Range(min=0))
+    is_active = fields.Boolean(required=False)
+
+    class Meta:
+        fields = ('name', 'price', 'is_active', 'id')
+
 product_schema = ProductSchema()
 products_schema = ProductSchema(many=True)
+update_product_schema = UpdateProductSchema()
 
-###TODO Posibly adjust this to be included within Product class/model/schema
+
 ### Catalog Model & Schema ###
 class Catalog(db.Model):
     __tablename__ = 'Catalog'
-    product_id = db.Column(db.Integer, db.ForeignKey('Products.id'), unique=True, nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey('Products.id'), nullable=False, primary_key=True)
     product_stock = db.Column(db.Integer, nullable=False, default=0)
     last_restock_date = db.Column(db.DateTime, nullable=True)
 
-    product = db.relationship('Product', backref=db.backref('catalog_entries'))
+    associated_product = db.relationship('Product', back_populates='catalog_entries', overlaps='catalog_entries')
 
     def deactivate_product(self):
         self.product_stock = 0
@@ -168,17 +168,17 @@ class Catalog(db.Model):
 class CatalogSchema(ma.Schema):
     product_id = fields.Integer(required=True)
     product_stock = fields.Integer(required=True)
-    product_name = fields.Method('get_product_name')
-
-    def get_product_name(self, obj):
-        return obj.product.name if obj.product else None
 
     class Meta:
         load_instance = True
 
+class UpdateCatalogSchema(ma.Schema):
+    product_id = fields.Integer(required=False)
+    product_stock = fields.Integer(required=True)
+
 catalog_schema = CatalogSchema()
 catalogs_schema = CatalogSchema(many=True)
-
+update_catalog_schema = UpdateCatalogSchema()
 
 ### Customer Endpoints & Methods ###
 @app.route('/customers', methods=['POST'])
@@ -216,7 +216,7 @@ def get_customer_by_id():
 def update_customer(id):
     customer = Customer.query.get_or_404(id)
     try:
-        customer_data = customer_schema.load(request.json)
+        customer_data = update_customer_schema.load(request.json)
     except ValidationError as ve:
         return jsonify(ve.messages), 400
 
@@ -242,14 +242,15 @@ def create_customer_account():
     except ValidationError as ve:
         return jsonify(ve.messages), 400
     
-    # Hashing password indluding a salt for added security
+    # Hashing password including a salt for added security
     customer_password = account_data['password']
     salt = bcrypt.gensalt()
-    hashed_password = bcrypt.hashpw(customer_password, salt)
-    new_account = CustomerAccount(customer_id = account_data['customer_id'],
-                                  username = account_data['username'],
-                                  password = hashed_password
-                                  )
+    hashed_password = bcrypt.hashpw(customer_password.encode('utf-8'), salt)
+    new_account = CustomerAccount(
+        customer_id = account_data['customer_id'],
+        username = account_data['username'],
+        password = hashed_password
+        )
     
     db.session.add(new_account)
     db.session.commit()
@@ -258,25 +259,30 @@ def create_customer_account():
 @app.route('/accounts/specified-customer', methods=['GET'])
 def get_account_details_by_customer_id():
     customer_id = request.args.get('customer_id')
-    account = CustomerAccount.query.filter_by(customer_id = customer_id).first_or_404()
-    return account_schema.jsonify(account)
+    account = CustomerAccount.query.filter_by(customer_id = customer_id).first()
+    if account:
+        return account_schema.jsonify(account)
+    else:
+        return jsonify({"error": "Account does not exist"}), 404
 
 @app.route('/accounts/specified-customer', methods=['PUT'])
 def update_customer_account():
     customer_id = request.args.get('customer_id')
     account = CustomerAccount.query.get_or_404(customer_id)
     try:
-        account_data = account_schema.load(request.json)
+        account_data = update_account_schema.load(request.json)
     except ValidationError as ve:
         return jsonify(ve.messages), 400
     
-    # Hashing password indluding a salt for added security
-    new_password = account_data['password']
-    salt = bcrypt.gensalt()
-    new_hashed_password = bcrypt.hashpw(new_password, salt)
-    account.customer_id = customer_id
-    account.username = account_data.get('username', account.username)
-    account.password = new_hashed_password
+    if 'username' in account_data:
+        account.username = account_data['username']
+    if 'password' in account_data:
+        # Hashing password including a salt for added security
+        new_password = account_data['password']
+        salt = bcrypt.gensalt()
+        new_hashed_password = bcrypt.hashpw(new_password.encode('utf-8'), salt)
+        account.password = new_hashed_password
+
     db.session.commit()
     return jsonify({"message": "Customer account updated successfully"}), 200
 
@@ -328,7 +334,7 @@ def get_active_products_details():
 def update_product(id):
     product = Product.query.get_or_404(id)
     try:
-        product_data = product_schema.load(request.json)
+        product_data = update_product_schema.load(request.json)
     except ValidationError as ve:
         return jsonify(ve.messages), 400
     
@@ -421,12 +427,12 @@ def monitor_stock_levels():
                 print(f"Restocked Product ID: {catalog_entry.product_id}\n- New Stock Quantity: {catalog_entry.product_stock}")
     return jsonify({"message": "Stock levels checked and restocked where necessary"}), 200
             
-@app.route('/catalog/update-stock/specified-product')
+@app.route('/catalog/update-stock/specified-product', methods=['POST'])
 def update_stock_by_product_id():
     product_id = request.args.get('product_id')
     catalog_entry = Catalog.query.filter_by(product_id = product_id).first_or_404()
     try:
-        catalog_data = catalog_schema.load(request.json)
+        catalog_data = update_catalog_schema.load(request.json)
     except ValidationError as ve:
         return jsonify(ve.messages), 400
     
@@ -445,8 +451,11 @@ def place_order():
     except ValidationError as ve:
         return jsonify(ve.messages), 400
     
-    customer_id = order_data['customer_id']
-    order_items = order_data['order_details']
+    customer_id = order_data.get('customer_id')
+    order_items = order_data.get('order_details', [])
+    
+    if not customer_id or not order_items:
+        return jsonify({"error": "Missing customer_id or order_details"}), 400
     
     # Create new order record, order_date_time is set automatically
     new_order = Order(
@@ -465,19 +474,22 @@ def place_order():
         if 'product_id' in item:
             product = Product.query.filter_by(id = item['product_id'], is_active=True).first()
         # If product_id not provided or not found, check product_name
-        if not product and 'product_name' in item:
-            product = Product.query.filter_by(name = item['product_name'], is_active=True)
+        elif 'product_name' in item:
+            product = Product.query.filter_by(name = item['product_name'], is_active=True).first()
+
         if not product:
             db.session.rollback()
             return jsonify({"error": "Product not found or not available"}), 400
         
-        quantity = item['quantity']
+        quantity = item.get('quantity')
+        if quantity is None:
+            return jsonify({"error": "Quantity is required for each order item"}), 400
 
         order_detail = OrderDetail(
             order_id = new_order.id,
             product_id = product.id,
             quantity = quantity,
-            price_per_unit = product.price
+            price_per_unit = float(product.price)
         )
         db.session.add(order_detail)
         order_detail_objects.append(order_detail)
@@ -490,7 +502,7 @@ def place_order():
                 db.session.rollback()
                 return jsonify({"error": f"Insufficient stock for {quantity} {product.name}"}), 400
             
-        total_amount += quantity * product.price
+        total_amount += quantity * float(product.price)
 
     new_order.total_amount = total_amount
     db.session.commit()
@@ -517,7 +529,7 @@ def track_order_by_id():
         order_id = order_id
         customer_id = customer_id
         order_date_time = order.order_date_time
-        expected_delivery_date = order.expected_delivery_date
+        expected_delivery_date = order_date_time.date()+timedelta(days=5)
         if order_date_time.date() < date.today() < (order_date_time.date()+timedelta(days=3)):
             status = "Order in process"
         if (order_date_time.date()+timedelta(days=3)) <= date.today() < expected_delivery_date:
