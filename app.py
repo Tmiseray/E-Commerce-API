@@ -480,19 +480,7 @@ def update_stock_by_product_id():
 def place_order():
     try:
         order_data = order_schema.load(request.json)
-        # order_items = order_data.get('order_details', [])
 
-        # Validate order details manually
-        # validated_order_items = []
-        # for item in order_items:
-        #     if 'product_id' not in item and 'product_name' not in item:
-        #         return jsonify({"error": "Either product_id or product_name must be provided for each item"}), 400
-        #     if 'quantity' not in item:
-        #         return jsonify({"error": "Quantity is required for each item"}), 400
-        #     validated_order_items.append(item)
-
-        # order_data['order_details'] = validated_order_items
-        # order_data = order_schema.load(order_data)
     except ValidationError as ve:
         return jsonify(ve.messages), 400
     
