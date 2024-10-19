@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request
 from flask_marshmallow import Marshmallow
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import bcrypt
+from flask_cors import CORS
 from marshmallow import fields, validate
 from marshmallow import ValidationError
 from datetime import datetime, date, timezone, timedelta
@@ -9,8 +10,13 @@ from password import my_password    # <-- Ensure to update password.py with your
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+mysqlconnector://root:{my_password}@localhost/ecommerce_db'
+
+# class Base(DeclarativeBase):
+#     pass
+
 db = SQLAlchemy(app)
 ma = Marshmallow(app)
+CORS(app)
 
 ### Customer Model & Schema ###
 class Customer(db.Model):
