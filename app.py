@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, session, redirect, url_for
 from flask_marshmallow import Marshmallow
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import bcrypt
@@ -315,7 +315,7 @@ def delete_customer_account():
 
 
 ### Product Endpoints & Methods ###
-@app.route('/products', methods=['POST'])
+@app.route('/add-product', methods=['POST'])
 def add_product():
     try:
         product_data = product_schema.load(request.json)
@@ -556,6 +556,13 @@ def place_order():
         "total_amount": new_order.total_amount
     }), 201
 
+@app.route('/orders', methods=['GET'])
+def get_orders():
+    orders = Order.query.all()
+    if orders:
+        return orders_schema.jsonify(orders)
+
+
 @app.route('/orders/<int:id>', methods=['GET'])
 def get_order_by_id(id):
     order = Order.query.get_or_404(id)
@@ -620,6 +627,36 @@ def get_order_history_by_customer_id():
         return jsonify(order_history)
     else:
         return jsonify({"message": f"No order history associated with Customer ID: {customer_id}"}), 404
+
+
+# Login Route
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    # if request.method == 'GET':
+    #     return render_template('login.html')
+    username_login = request.form.get('username')
+    password_login = request.form.get('password')
+    account = CustomerAccount.query.filter_by(username=username_login).first()
+    if account:
+        is_valid = bcrypt.checkpw(password_login.encode('utf-8'), account.password.encode('utf-8'))
+        if is_valid:
+            user = Customer.query.filter_by(id = account.user_id).first()
+            if user:
+                session['name'] = user.first_name
+                session['user_id'] = user.id
+                session['logged_in'] = True
+                return redirect(url_for('customer-profile'))
+        # return render_template('login.html', message='Invalid username or password')
+    return redirect(url_for('register_user'))
+          
+# Logout Route
+@app.route('/logout')
+def logout():
+    session.pop('user_id', None)
+    session.pop('name', None)
+    return redirect(url_for('login'))
+
+
 
 
 with app.app_context():
