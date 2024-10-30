@@ -11,9 +11,6 @@ from password import my_password    # <-- Ensure to update password.py with your
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+mysqlconnector://root:{my_password}@localhost/ecommerce_db'
 
-# class Base(DeclarativeBase):
-#     pass
-
 db = SQLAlchemy(app)
 ma = Marshmallow(app)
 CORS(app)
@@ -114,9 +111,9 @@ class Order(db.Model):
         self.customer_id = customer_id
         self.total_amount = total_amount
         self.order_date_time = order_date_time if order_date_time else datetime.now(timezone.utc)
-        self.expected_delivery_date = self.calculate_expected_delivary_date()
+        self.expected_delivery_date = self.calculate_expected_delivery_date()
 
-    def calculate_expected_delivary_date(self):
+    def calculate_expected_delivery_date(self):
         return (self.order_date_time + timedelta(days=5)).date()
 
 class OrderSchema(ma.Schema):
@@ -200,7 +197,7 @@ catalogs_schema = CatalogSchema(many=True)
 update_catalog_schema = UpdateCatalogSchema()
 
 ### Customer Endpoints & Methods ###
-@app.route('/customers', methods=['POST'])
+@app.route('/register', methods=['POST'])
 def add_customer():
     try:
         customer_data = customer_schema.load(request.json)
@@ -222,14 +219,11 @@ def get_customers():
     customers = Customer.query.all()
     return customers_schema.jsonify(customers)
 
-@app.route('/customers/specified-id', methods=['GET'])
-def get_customer_by_id():
-    id = request.args.get('id')
-    customer = Customer.query.filter_by(id = id).first()
+@app.route('/customers/<int:id>', methods=['GET'])
+def get_customer_by_id(id):
+    customer = Customer.query.get_or_404(id)
     if customer:
         return customer_schema.jsonify(customer)
-    else:
-        return jsonify({"message": "Customer not found"}), 404
 
 @app.route('/customers/<int:id>', methods=['PUT'])
 def update_customer(id):
@@ -250,11 +244,12 @@ def delete_customer(id):
     customer = Customer.query.get_or_404(id)
     db.session.delete(customer)
     db.session.commit()
+    delete_customer_account(id)
     return jsonify({"message": "Customer removed successfully"}), 200
 
 
 ### CustomerAccount Endpoints & Methods ###
-@app.route('/accounts', methods=['POST'])
+@app.route('/create-account', methods=['POST'])
 def create_customer_account():
     try:
         account_data = account_schema.load(request.json)
@@ -275,19 +270,15 @@ def create_customer_account():
     db.session.commit()
     return jsonify({"message": "New customer account added successfully"}), 201
 
-@app.route('/accounts/specified-customer', methods=['GET'])
-def get_account_details_by_customer_id():
-    customer_id = request.args.get('customer_id')
-    account = CustomerAccount.query.filter_by(customer_id = customer_id).first()
+@app.route('/accounts/<int:id>', methods=['GET'])
+def get_account_details_by_customer_id(id):
+    account = CustomerAccount.query.get_or_404(id)
     if account:
         return account_schema.jsonify(account)
-    else:
-        return jsonify({"error": "Account does not exist"}), 404
 
-@app.route('/accounts/specified-customer', methods=['PUT'])
-def update_customer_account():
-    customer_id = request.args.get('customer_id')
-    account = CustomerAccount.query.get_or_404(customer_id)
+@app.route('/accounts/<int:id>', methods=['PUT'])
+def update_customer_account(id):
+    account = CustomerAccount.query.get_or_404(id)
     try:
         account_data = update_account_schema.load(request.json)
     except ValidationError as ve:
@@ -305,10 +296,9 @@ def update_customer_account():
     db.session.commit()
     return jsonify({"message": "Customer account updated successfully"}), 200
 
-@app.route('/accounts/specified-customer', methods=['DELETE'])
-def delete_customer_account():
-    customer_id = request.args.get('customer_id')
-    account = CustomerAccount.query.get_or_404(customer_id)
+@app.route('/accounts/<int:id>', methods=['DELETE'])
+def delete_customer_account(id):
+    account = CustomerAccount.query.get_or_404(id)
     db.session.delete(account)
     db.session.commit()
     return jsonify({"message": "Account removed successfully"}), 200
@@ -369,9 +359,8 @@ def update_product(id):
 
     return jsonify({"message": "Product updated successfully"}), 200
 
-@app.route('/products/specified-product', methods=['PUT'])
-def soft_delete_product():
-    id = request.args.get('id')
+@app.route('/products/deactivate/<int:id>', methods=['PUT'])
+def soft_delete_product(id):
     product = Product.query.get_or_404(id)
     product.deactivate()
     catalog_entry = Catalog.query.filter_by(product_id = id).first()
@@ -382,7 +371,7 @@ def soft_delete_product():
 
 
 ### Catalog Endpoints & Methods ###
-@app.route('/catalog', methods=['POST'])
+@app.route('/add-to-catalog', methods=['POST'])
 def add_product_to_catalog():
     try:
         catalog_data = catalog_schema.load(request.json)
@@ -465,20 +454,19 @@ def monitor_stock_levels():
         
     return jsonify(response_data), 201 if response_data['message'] == "Stock levels checked and restocked where necessary" else 404
             
-@app.route('/catalog/update-stock/specified-product', methods=['POST'])
-def update_stock_by_product_id():
-    product_id = request.args.get('product_id')
-    catalog_entry = Catalog.query.filter_by(product_id = product_id).first_or_404()
+@app.route('/catalog/update-stock/<int:id>', methods=['POST'])
+def update_stock_by_product_id(id):
+    catalog_entry = Catalog.query.filter_by(product_id = id).first_or_404()
     try:
         catalog_data = update_catalog_schema.load(request.json)
     except ValidationError as ve:
         return jsonify(ve.messages), 400
     
-    catalog_entry.product_id = product_id
+    catalog_entry.product_id = id
     catalog_entry.product_stock = catalog_data['product_stock']
     db.session.commit()
 
-    return jsonify({"message": f"Successfully updated stock in catalog for Product ID: {product_id}, New Stock Level: {catalog_entry.product_stock}"}), 200
+    return jsonify({"message": f"Successfully updated stock in catalog for Product ID: {id}, New Stock Level: {catalog_entry.product_stock}"}), 200
 
 
 ### Order Endpoints & Methods ###
@@ -569,10 +557,105 @@ def get_order_by_id(id):
     if order:
         return order_schema.jsonify(order)
 
-@app.route('/orders/track-status', methods=['POST'])
-def track_order_by_id():
-    order_id = request.args.get('order_id')
-    customer_id = request.args.get('customer_id')
+@app.route('/orders/details/<int:id>', methods=['GET'])
+def get_order_details(id):
+    order_details = OrderDetail.query.get_or_404(order_id=id)
+    if order_details.count(id) > 1:
+        return order_details_schema.jsonify(order_details)
+    else:
+        return order_detail_schema.jsonify(order_details)
+    
+@app.route('/orders/<int:id>', methods=['PUT'])
+def update_order(id):
+    order = Order.query.get_or_404(id)
+    try:
+        order_data = order_schema.load(request.json)
+    except ValidationError as ve:
+        return jsonify(ve.messages), 400
+    
+    order.customer_id = order_data.get('customer_id', order.customer_id)
+    order.order_date_time = datetime.now(timezone.utc)
+    order.expected_delivery_date = order.calculate_expected_delivery_date()
+
+    existing_details = OrderDetail.query.filter_by(order_id=id).all()
+    for detail in existing_details:
+        db.session.delete(detail)
+
+    order_items = order_data.get('order_details', [])
+    total_amount = 0
+
+    for item in order_items:
+        product = None
+
+        if 'product_id' in item:
+            product = Product.query.filter_by(id=item['product_id'], is_active=True).first()
+        elif 'product_name' in item:
+            product = Product.query.filter_by(name=item['product_name'], is_active=True).first()
+
+        if not product:
+            db.session.rollback()
+            return jsonify({'error': 'Product not found or not available'}), 400
+        
+        quantity = item.get('quantity')
+        if quantity is None:
+            db.session.rollback()
+            return jsonify({'error': 'Quantity is required for each order item'}), 400
+        
+        order_detail = OrderDetail(
+            order_id=order.id,
+            product_id=product.id,
+            product_name=product.name,
+            quantity=quantity,
+            price_per_unit=float(product.price)
+        )
+        db.session.add(order_detail)
+
+        catalog_entry = Catalog.query.filter_by(product_id=product.id).first()
+        if catalog_entry:
+            catalog_entry.product_stock -= quantity
+            if catalog_entry.product_stock < 0:
+                db.session.rollback()
+                return jsonify({'error': f'Insufficient stock for {quantity} {product.name}'}), 400
+            
+        total_amount += quantity * float(product.price)
+
+    order.total_amount = total_amount
+    db.session.commit()
+
+    return jsonify({"message": "Order updated successfully", 'order_id': order.id}), 200
+
+@app.route('/orders/<int:id>', methods=['DELETE'])
+def delete_order(id):
+    order = Order.query.get_or_404(id)
+
+    # Retrieve the order details to update stock
+    order_details = OrderDetail.query.filter_by(order_id=order.id).all()
+
+    # Update stock in Catalog based on order details
+    for detail in order_details:
+        catalog_entry = Catalog.query.filter_by(product_id=detail.product_id).first()
+        if catalog_entry:
+            catalog_entry.product_stock += detail.quantity  # Restore stock
+
+    # Delete order details
+    for detail in order_details:
+        db.session.delete(detail)
+
+    # Delete the order
+    db.session.delete(order)
+
+    # Commit changes to the database
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": "Error deleting order: " + str(e)}), 500
+
+    return jsonify({"message": "Order deleted successfully", "order_id": id}), 200
+
+
+@app.route('/orders/track-status/?customer_id=<int:customer_id>&order_id=<int:order_id>', methods=['POST'])
+def track_order_by_id(customer_id, order_id):
     order = Order.query.filter_by(id=order_id, customer_id=customer_id).first_or_404()
     if order:
         order_id = order_id
@@ -598,14 +681,13 @@ def track_order_by_id():
         }), 200
 
 # TODO BONUS retrieve order history for customer
-@app.route('/orders/history-for-customer', methods=['POST'])
-def get_order_history_by_customer_id():
-    customer_id = request.args.get('customer_id')
-    if not customer_id:
+@app.route('/orders/history-for-customer/<int:id>', methods=['POST'])
+def get_order_history_by_customer_id(id):
+    if not id:
         return jsonify({"message": "Customer ID is required"}), 400
     
     try:
-        orders = Order.query.filter_by(customer_id=customer_id).all()
+        orders = Order.query.filter_by(customer_id=id).all()
     except Exception as e:
         return jsonify({
             "message": "An error occurred while fetching orders",
@@ -626,7 +708,7 @@ def get_order_history_by_customer_id():
 
         return jsonify(order_history)
     else:
-        return jsonify({"message": f"No order history associated with Customer ID: {customer_id}"}), 404
+        return jsonify({"message": f"No order history associated with Customer ID: {id}"}), 404
 
 
 # Login Route
@@ -640,19 +722,19 @@ def login():
     if account:
         is_valid = bcrypt.checkpw(password_login.encode('utf-8'), account.password.encode('utf-8'))
         if is_valid:
-            user = Customer.query.filter_by(id = account.user_id).first()
-            if user:
-                session['name'] = user.first_name
-                session['user_id'] = user.id
+            customer = Customer.query.filter_by(id = account.customer_id).first()
+            if customer:
+                session['name'] = customer.first_name
+                session['customer_id'] = customer.id
                 session['logged_in'] = True
                 return redirect(url_for('customer-profile'))
         # return render_template('login.html', message='Invalid username or password')
-    return redirect(url_for('register_user'))
+    return redirect(url_for('register'))
           
 # Logout Route
 @app.route('/logout')
 def logout():
-    session.pop('user_id', None)
+    session.pop('customer_id', None)
     session.pop('name', None)
     return redirect(url_for('login'))
 
