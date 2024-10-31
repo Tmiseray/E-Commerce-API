@@ -279,11 +279,14 @@ def create_customer_account(id):
     db.session.commit()
     return jsonify({"message": "New customer account added successfully"}), 201
 
-@app.route('/accounts/<int:id>', methods=['GET'])
-def get_account_details_by_customer_id(id):
-    account = CustomerAccount.query.get_or_404(id)
+@app.route('/accounts/<int:customer_id>', methods=['GET'])
+def get_account_details_by_customer_id(customer_id):
+    account = CustomerAccount.query.filter_by(customer_id=customer_id).first()
     if account:
+        print(account)
         return account_schema.jsonify(account)
+    else:
+        return jsonify([])
 
 @app.route('/accounts/<int:id>', methods=['PUT'])
 def update_customer_account(id):
