@@ -76,7 +76,7 @@ class OrderDetail(db.Model):
     __tablename__ = 'OrderDetails'
     order_id = db.Column(db.Integer, db.ForeignKey('Orders.id'), primary_key=True)
     product_id = db.Column(db.Integer, db.ForeignKey('Products.id'), primary_key=True)
-    product_name = db.Column(db.String, nullable=False)
+    product_name = db.Column(db.String(255), nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
     price_per_unit = db.Column(db.Numeric(precision=10, scale=2), nullable=False)
 
@@ -127,7 +127,7 @@ class OrderSchema(ma.Schema):
 
     class Meta:
         load_instance = True
-        fields = ('customer_id', 'order_date_time', 'expected_delivery_date', 'total_amount', 'order_details')
+        fields = ('id', 'customer_id', 'order_date_time', 'expected_delivery_date', 'total_amount', 'order_details')
 
 order_schema = OrderSchema()
 orders_schema = OrderSchema(many=True)
@@ -316,6 +316,7 @@ def delete_customer_account(id):
 ### Product Endpoints & Methods ###
 @app.route('/add-product', methods=['POST'])
 def add_product():
+    
     try:
         product_data = product_schema.load(request.json)
     except ValidationError as ve:
@@ -568,11 +569,11 @@ def get_order_by_id(id):
 
 @app.route('/orders/details/<int:id>', methods=['GET'])
 def get_order_details(id):
-    order_details = OrderDetail.query.get_or_404(order_id=id)
+    order_details = OrderDetail.query.filter_by(order_id=id).all()
     if order_details.count(id) > 1:
-        return order_details_schema.jsonify(order_details)
+        return jsonify(order_details_schema.dump(order_details))
     else:
-        return order_detail_schema.jsonify(order_details)
+        return jsonify(order_detail_schema.dump(order_details))
     
 @app.route('/orders/<int:id>', methods=['PUT'])
 def update_order(id):
