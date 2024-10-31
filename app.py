@@ -6,9 +6,11 @@ from flask_cors import CORS
 from marshmallow import fields, validate
 from marshmallow import ValidationError
 from datetime import datetime, date, timezone, timedelta
-from password import my_password    # <-- Ensure to update password.py with your own
+from password import my_password, my_secret_key    # <-- Ensure to update password.py with your own secrets
+
 
 app = Flask(__name__)
+app.secret_key = my_secret_key
 app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+mysqlconnector://root:{my_password}@localhost/ecommerce_db'
 
 db = SQLAlchemy(app)
@@ -212,7 +214,7 @@ def add_customer():
 
     db.session.add(new_customer)
     db.session.commit()
-    return jsonify({"message": "New customer added successfully"}), 201
+    return jsonify({"customer_id": new_customer.id}), 201
 
 @app.route('/customers', methods=['GET'])
 def get_customers():
@@ -249,19 +251,26 @@ def delete_customer(id):
 
 
 ### CustomerAccount Endpoints & Methods ###
-@app.route('/create-account', methods=['POST'])
-def create_customer_account():
+@app.route('/create-account/<int:id>', methods=['POST'])
+def create_customer_account(id):
+    data = request.json
+    print(f"received data: {data}")
+
+    if not data:
+        return jsonify({'error': 'Missing request body'}), 400
+    
     try:
         account_data = account_schema.load(request.json)
     except ValidationError as ve:
         return jsonify(ve.messages), 400
     
+    customer_id = account_data.get('customer_id', id)
     # Hashing password including a salt for added security
     customer_password = account_data['password']
     salt = bcrypt.gensalt()
     hashed_password = bcrypt.hashpw(customer_password.encode('utf-8'), salt)
     new_account = CustomerAccount(
-        customer_id = account_data['customer_id'],
+        customer_id = customer_id,
         username = account_data['username'],
         password = hashed_password
         )
@@ -406,9 +415,9 @@ def get_active_catalog_products():
 @app.route('/catalog', methods=['GET'])
 def get_full_catalog():
     full_catalog = Catalog.query.all()
-    return catalogs_schema.jsonify(full_catalog)
+    return jsonify(catalogs_schema.dump(full_catalog))
 
-@app.route('/catalog/stock-monitor', methods=['POST'])
+@app.route('/stock-monitor', methods=['POST'])
 def monitor_stock_levels():
     stock_threshold = 10
     restock_days_threshold = 7
@@ -714,31 +723,26 @@ def get_order_history_by_customer_id(id):
 # Login Route
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    # if request.method == 'GET':
-    #     return render_template('login.html')
-    username_login = request.form.get('username')
-    password_login = request.form.get('password')
+    data = request.get_json()
+    username_login = data.get('username')
+    password_login = data.get('password')
     account = CustomerAccount.query.filter_by(username=username_login).first()
     if account:
         is_valid = bcrypt.checkpw(password_login.encode('utf-8'), account.password.encode('utf-8'))
         if is_valid:
             customer = Customer.query.filter_by(id = account.customer_id).first()
             if customer:
-                session['name'] = customer.first_name
+                session['name'] = customer.name
                 session['customer_id'] = customer.id
                 session['logged_in'] = True
-                return redirect(url_for('customer-profile'))
-        # return render_template('login.html', message='Invalid username or password')
-    return redirect(url_for('register'))
+                return jsonify(customer_schema.dump(customer)), 200
+    return jsonify(error='Invalid username or password'), 401
           
 # Logout Route
 @app.route('/logout')
 def logout():
-    session.pop('customer_id', None)
-    session.pop('name', None)
-    return redirect(url_for('login'))
-
-
+    session.clear()
+    return 200
 
 
 with app.app_context():
