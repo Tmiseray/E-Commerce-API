@@ -694,13 +694,13 @@ def track_order_by_id(customer_id, order_id):
         }), 200
 
 # TODO BONUS retrieve order history for customer
-@app.route('/orders/history-for-customer/<int:id>', methods=['POST'])
-def get_order_history_by_customer_id(id):
+@app.route('/orders/history-for-customer/<int:customer_id>', methods=['POST'])
+def get_order_history_by_customer_id(customer_id):
     if not id:
         return jsonify({"message": "Customer ID is required"}), 400
     
     try:
-        orders = Order.query.filter_by(customer_id=id).all()
+        orders = Order.query.filter_by(customer_id=customer_id).all()
     except Exception as e:
         return jsonify({
             "message": "An error occurred while fetching orders",
@@ -743,10 +743,10 @@ def login():
     return jsonify(error='Invalid username or password'), 401
           
 # Logout Route
-@app.route('/logout')
+@app.route('/logout', methods=['POST'])
 def logout():
     session.clear()
-    return 200
+    return jsonify({'message': 'Susscessful logout'}), 200
 
 
 with app.app_context():
