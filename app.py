@@ -667,14 +667,16 @@ def delete_order(id):
     return jsonify({"message": "Order deleted successfully", "order_id": id}), 200
 
 
-@app.route('/orders/track-status/?customer_id=<int:customer_id>&order_id=<int:order_id>', methods=['POST'])
-def track_order_by_id(customer_id, order_id):
-    order = Order.query.filter_by(id=order_id, customer_id=customer_id).first_or_404()
+@app.route('/orders/track-status/', methods=['GET'])
+def track_order_by_id():
+    customer_id = request.args.get('customer_id', type=int)
+    order_id = request.args.get('order_id', type=int)
+
+    order = Order.query.filter_by(customer_id=customer_id, id=order_id).first()
     if order:
-        order_id = order_id
-        customer_id = customer_id
         order_date_time = order.order_date_time
         expected_delivery_date = order_date_time.date()+timedelta(days=5)
+        
         if order_date_time.date() <= date.today() < (order_date_time.date()+timedelta(days=3)):
             status = "Order in process"
         if (order_date_time.date()+timedelta(days=3)) <= date.today() < expected_delivery_date:
@@ -692,6 +694,12 @@ def track_order_by_id(customer_id, order_id):
             "expected_delivery_date": expected_delivery_date,
             "status": status
         }), 200
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    app.logger.error(f'Error: {str(e)}')
+    return "Internal Server Error", 500
+
 
 # TODO BONUS retrieve order history for customer
 @app.route('/orders/history-for-customer/<int:customer_id>', methods=['POST'])
