@@ -425,7 +425,9 @@ def get_full_catalog():
 def monitor_stock_levels():
     stock_threshold = 10
     restock_days_threshold = 7
-    low_stock_products = Catalog.query.filter(Catalog.product_stock.between(1, stock_threshold-1)).all()
+    low_stock_products = Catalog.query.filter(Catalog.product_stock.between(0, stock_threshold-1)).all()
+
+    print(f"Low stock products found: {[p.product_id for p in low_stock_products]}")
 
     response_data = {
         "message": None,
@@ -437,6 +439,9 @@ def monitor_stock_levels():
         response_data['message'] = "Stock levels checked and restocked where necessary"
         for catalog_entry in low_stock_products:
             product = Product.query.filter_by(id = catalog_entry.product_id).first()
+            if not product:
+                continue
+
             product_data = {
                 "product_name": product.name,
                 "product_id": catalog_entry.product_id,
@@ -456,6 +461,7 @@ def monitor_stock_levels():
                 restock_quantity = 20
                 catalog_entry.product_stock += restock_quantity
                 catalog_entry.last_restock_date = datetime.now(timezone.utc)
+                catalog_entry.is_active = True
                 db.session.commit()
                 restock_data = {
                     "product_id": catalog_entry.product_id,
