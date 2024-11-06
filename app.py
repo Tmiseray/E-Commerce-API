@@ -148,6 +148,10 @@ class Product(db.Model):
         self.is_active = False
         db.session.commit()
 
+    def activate(self):
+        self.is_active = True
+        db.session.commit()
+
 class ProductSchema(ma.Schema):
     name = fields.String(required=True, validate=validate.Length(min=1))
     price = fields.Float(required=True, validate=validate.Range(min=0))
@@ -179,8 +183,11 @@ class Catalog(db.Model):
     associated_product = db.relationship('Product', back_populates='catalog_entries', overlaps='catalog_entries')
 
     def deactivate_product(self):
-        self.product_stock = 0
         self.associated_product.is_active = False
+        db.session.commit()
+
+    def activate_product(self):
+        self.associated_product.is_active = True
         db.session.commit()
 
 class CatalogSchema(ma.Schema):
@@ -382,6 +389,16 @@ def soft_delete_product(id):
 
     return jsonify({"message": "Successfully deactivated product from catalog"}), 200
 
+@app.route('/products/activate/<int:id>', methods=['PUT'])
+def activate_product(id):
+    product = Product.query.get_or_404(id)
+    product.activate()
+    catalog_entry = Catalog.query.filter_by(product_id = id).first()
+    if catalog_entry:
+        catalog_entry.activate_product()
+
+    return jsonify({"message": "Successfully deactivated product from catalog"}), 200
+
 
 ### Catalog Endpoints & Methods ###
 @app.route('/add-to-catalog', methods=['POST'])
@@ -489,15 +506,15 @@ def update_stock_by_product_id(id):
 
 
 ### Order Endpoints & Methods ###
-@app.route('/place-order', methods=['POST'])
-def place_order():
+@app.route('/place-order/<int:id>', methods=['POST'])
+def place_order(id):
     try:
         order_data = order_schema.load(request.json)
 
     except ValidationError as ve:
         return jsonify(ve.messages), 400
     
-    customer_id = order_data.get('customer_id')
+    customer_id = Customer.query.get_or_404(id)
     order_items = order_data.get('order_details', [])
     
     if not customer_id or not order_items:
@@ -517,10 +534,10 @@ def place_order():
         product = None
 
         # Check if product_id is provided & retrieve product
-        if 'product_id' in item:
+        if item.get('product_id'):
             product = Product.query.filter_by(id = item['product_id'], is_active=True).first()
         # If product_id not provided or not found, check product_name
-        elif 'product_name' in item:
+        elif item.get('product_name'):
             product = Product.query.filter_by(name = item['product_name'], is_active=True).first()
 
         if not product:
