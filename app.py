@@ -441,10 +441,9 @@ def get_full_catalog():
 @app.route('/stock-monitor', methods=['POST'])
 def monitor_stock_levels():
     stock_threshold = 10
-    restock_days_threshold = 7
-    low_stock_products = Catalog.query.filter(Catalog.product_stock.between(0, stock_threshold-1)).all()
+    restock_quantity = 20
+    low_stock_products = Catalog.query.filter(Catalog.product_stock <= stock_threshold).all()
 
-    print(f"Low stock products found: {[p.product_id for p in low_stock_products]}")
 
     response_data = {
         "message": None,
@@ -453,11 +452,15 @@ def monitor_stock_levels():
     }
 
     if low_stock_products:
+        print(f"Low stock products found: {[p.product_id for p in low_stock_products]}")
+
         response_data['message'] = "Stock levels checked and restocked where necessary"
         for catalog_entry in low_stock_products:
             product = Product.query.filter_by(id = catalog_entry.product_id).first()
             if not product:
                 continue
+
+            print(f"Catalog entry before restock: {catalog_entry.product_id}, {catalog_entry.product_stock}, {catalog_entry.last_restock_date}")
 
             product_data = {
                 "product_name": product.name,
@@ -465,20 +468,14 @@ def monitor_stock_levels():
                 "product_stock": catalog_entry.product_stock
             }
             response_data['Products Below Threshold'].append(product_data)
+    
+            print(f"Restocking {catalog_entry.product_id}: {catalog_entry.product_stock} -> {catalog_entry.product_stock + restock_quantity}")
 
-            # Check last restock date
-            if catalog_entry.last_restock_date:
-                days_since_last_restock = (datetime.now(timezone.utc) - (catalog_entry.last_restock_date).replace(tzinfo=timezone.utc)).days
-            else:
-                # Force restock
-                days_since_last_restock = restock_days_threshold + 1
+            catalog_entry.product_stock += restock_quantity
+            catalog_entry.last_restock_date = datetime.now(timezone.utc)
+            catalog_entry.is_active = True
 
-            # Trigger restock if required
-            if days_since_last_restock > restock_days_threshold:
-                restock_quantity = 20
-                catalog_entry.product_stock += restock_quantity
-                catalog_entry.last_restock_date = datetime.now(timezone.utc)
-                catalog_entry.is_active = True
+            try:
                 db.session.commit()
                 restock_data = {
                     "product_id": catalog_entry.product_id,
@@ -486,9 +483,17 @@ def monitor_stock_levels():
                     "last_restock_date": catalog_entry.last_restock_date,
                 }
                 response_data['Restocking Details'].append(restock_data)
+
+                print(f"Restocked product {catalog_entry.product_id} to {catalog_entry.product_stock}")
+            except Exception as e:
+                db.session.rollback()  # Rollback the session in case of error
+                print(f"Error committing changes: {str(e)}")
+                return jsonify({"message": "Error updating stock."}), 500
+
     else:
         response_data['message'] = f"No products below stock threshold: {stock_threshold}"
         
+    print(response_data)
     return jsonify(response_data), 201 if response_data['message'] == "Stock levels checked and restocked where necessary" else 404
             
 @app.route('/catalog/update-stock/<int:id>', methods=['POST'])
@@ -538,6 +543,7 @@ def place_order():
         # Check if product_id is provided & retrieve product
         if item.get('product_id'):
             product = Product.query.filter_by(id = item['product_id'], is_active=True).first()
+            
         # If product_id not provided or not found, check product_name
         elif item.get('product_name'):
             product = Product.query.filter_by(name = item['product_name'], is_active=True).first()
@@ -616,6 +622,7 @@ def update_order(id):
     order.expected_delivery_date = order.calculate_expected_delivery_date()
 
     existing_details = OrderDetail.query.filter_by(order_id=id).all()
+
     # Update stock in Catalog based on order details
     for detail in existing_details:
         catalog_entry = Catalog.query.filter_by(product_id=detail.product_id).first()
@@ -718,56 +725,8 @@ def get_orders_totals():
     }), 200
 
 
-
-
-# @app.route('/orders/track-status/', methods=['GET'])
-# def track_order_by_id():
-#     customer_id = request.args.get('customer_id', type=int)
-#     order_id = request.args.get('order_id', type=int)
-
-#     if not customer_id or not order_id:
-#         return jsonify({"message": "Missing customer_id or order_id"}), 400
-
-#     order = Order.query.filter_by(customer_id=customer_id, id=order_id).first()
-
-#     if not order:
-#         return jsonify({"message": "Order not found"}), 404
-
-#     order_date_time = order.order_date_time
-#     expected_delivery_date = order.expected_delivery_date
-
-#     try:
-#         today = date.today()
-
-#         # Order In Process: Before expected delivery date, but not shipped
-#         if order_date_time.date() == today:
-#             status = 'Order in process'
-#         elif order_date_time.date() <= today < (expected_delivery_date - timedelta(days=2)):
-#             status = 'Order in process'
-
-#         # Shipped: Two days before the expected delivery date
-#         elif (expected_delivery_date - timedelta(days=2)) <= today < expected_delivery_date:
-#             status = 'Shipped'
-
-#         # Out for Delivery: Expected delivery date
-#         elif expected_delivery_date == today:
-#             status = 'Out for delivery'
-
-#         # Complete: After expected delivery date
-#         elif today > expected_delivery_date:
-#             status = 'Complete'
-
-#         return jsonify({'status': status}), 200
-#     except Exception as e:
-#         app.logger.exception("Error tracking order status: %s", e)
-#         return "Internal Server Error", 500
-
-
-@app.route('/orders/track-status', methods=['GET'])
-def track_order_by_id():
-    
-    customer_id = request.args.get('customer_id', type=int)
-    order_id = request.args.get('id', type=int)
+@app.route('/orders/track-status/<int:customer_id>/<int:order_id>', methods=['GET'])
+def track_order_by_id(customer_id, order_id):
 
     if not customer_id or not order_id:
         return jsonify({"message": "Missing customer_id or order_id"}), 400
@@ -793,12 +752,8 @@ def track_order_by_id():
         status = 'Out for delivery'
     elif today > expected_delivery_date:
         status = 'Complete'
-    # else:
-    #     status = "Order status not determined"
 
     app.logger.debug(f"Order Date: {order_date_time}, Expected Delivery Date: {expected_delivery_date}, Today: {today}")
-
-    # return jsonify({"status": status}), 200
 
     return jsonify({
         'order_id': order.id,
