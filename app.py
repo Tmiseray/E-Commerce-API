@@ -13,9 +13,9 @@ app = Flask(__name__)
 app.secret_key = my_secret_key
 app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+mysqlconnector://root:{my_password}@localhost/ecommerce_db'
 
+CORS(app)
 db = SQLAlchemy(app)
 ma = Marshmallow(app)
-CORS(app)
 
 ### Customer Model & Schema ###
 class Customer(db.Model):
@@ -482,7 +482,8 @@ def monitor_stock_levels():
                 db.session.commit()
                 restock_data = {
                     "product_id": catalog_entry.product_id,
-                    "new_stock_quantity": catalog_entry.product_stock
+                    "new_stock_quantity": catalog_entry.product_stock,
+                    "last_restock_date": catalog_entry.last_restock_date,
                 }
                 response_data['Restocking Details'].append(restock_data)
     else:
@@ -696,6 +697,28 @@ def delete_order(id):
 
     return jsonify({"message": "Order deleted successfully", "order_id": id}), 200
 
+@app.route('/orders/totals', methods=['GET'])
+def get_orders_totals():
+    orders = Order.query.all()
+    last_week = date.today()-timedelta(days=7)
+
+    total_sales = 0
+    weekly_sales = 0
+
+    for order in orders:
+        total_sales += order.total_amount
+        order_date = order.order_date_time.date()
+
+        if last_week <= order_date:
+            weekly_sales += order.total_amount
+
+    return jsonify({
+        'total_sales': total_sales,
+        'weekly_sales': weekly_sales,
+    }), 200
+
+
+
 
 # @app.route('/orders/track-status/', methods=['GET'])
 # def track_order_by_id():
@@ -740,11 +763,11 @@ def delete_order(id):
 #         return "Internal Server Error", 500
 
 
-@app.route('/orders/track-status/', methods=['GET'])
+@app.route('/orders/track-status', methods=['GET'])
 def track_order_by_id():
     
     customer_id = request.args.get('customer_id', type=int)
-    order_id = request.args.get('order_id', type=int)
+    order_id = request.args.get('id', type=int)
 
     if not customer_id or not order_id:
         return jsonify({"message": "Missing customer_id or order_id"}), 400
@@ -775,7 +798,15 @@ def track_order_by_id():
 
     app.logger.debug(f"Order Date: {order_date_time}, Expected Delivery Date: {expected_delivery_date}, Today: {today}")
 
-    return jsonify({"status": status}), 200
+    # return jsonify({"status": status}), 200
+
+    return jsonify({
+        'order_id': order.id,
+        'customer_id': order.customer_id,
+        'order_date_time': order_date_time,
+        'expected_delivery_date': expected_delivery_date,
+        'status': status,
+    })
 
 @app.errorhandler(Exception)
 def handle_exception(e):
