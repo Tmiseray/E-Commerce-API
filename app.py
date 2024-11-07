@@ -468,7 +468,7 @@ def monitor_stock_levels():
 
             # Check last restock date
             if catalog_entry.last_restock_date:
-                days_since_last_restock = (datetime.now(timezone.utc) - catalog_entry.last_restock_date).days
+                days_since_last_restock = (datetime.now(timezone.utc) - (catalog_entry.last_restock_date).replace(tzinfo=timezone.utc)).days
             else:
                 # Force restock
                 days_since_last_restock = restock_days_threshold + 1
@@ -506,23 +506,24 @@ def update_stock_by_product_id(id):
 
 
 ### Order Endpoints & Methods ###
-@app.route('/place-order/<int:id>', methods=['POST'])
-def place_order(id):
+@app.route('/place-order', methods=['POST'])
+def place_order():
     try:
         order_data = order_schema.load(request.json)
 
     except ValidationError as ve:
         return jsonify(ve.messages), 400
     
-    customer_id = Customer.query.get_or_404(id)
+    id = order_data.get('customer_id', '')
+    customer = Customer.query.filter_by(id=id).first()
     order_items = order_data.get('order_details', [])
     
-    if not customer_id or not order_items:
+    if not customer or not order_items:
         return jsonify({"error": "Missing customer_id or order_details"}), 400
 
     # Create new order record, order_date_time is set automatically
     new_order = Order(
-        customer_id = customer_id,
+        customer_id = customer.id,
         total_amount = 0
     )
     db.session.add(new_order)
@@ -608,12 +609,18 @@ def update_order(id):
         order_data = order_schema.load(request.json)
     except ValidationError as ve:
         return jsonify(ve.messages), 400
-    
+
     order.customer_id = order_data.get('customer_id', order.customer_id)
     order.order_date_time = datetime.now(timezone.utc)
     order.expected_delivery_date = order.calculate_expected_delivery_date()
 
     existing_details = OrderDetail.query.filter_by(order_id=id).all()
+    # Update stock in Catalog based on order details
+    for detail in existing_details:
+        catalog_entry = Catalog.query.filter_by(product_id=detail.product_id).first()
+        if catalog_entry:
+            catalog_entry.product_stock += detail.quantity
+
     for detail in existing_details:
         db.session.delete(detail)
 
@@ -692,31 +699,38 @@ def delete_order(id):
 
 @app.route('/orders/track-status/', methods=['GET'])
 def track_order_by_id():
+    
     customer_id = request.args.get('customer_id', type=int)
     order_id = request.args.get('order_id', type=int)
 
-    order = Order.query.filter_by(customer_id=customer_id, id=order_id).first()
-    if order:
-        order_date_time = order.order_date_time
-        expected_delivery_date = order_date_time.date()+timedelta(days=5)
-        
-        if order_date_time.date() <= date.today() < (order_date_time.date()+timedelta(days=3)):
-            status = "Order in process"
-        if (order_date_time.date()+timedelta(days=3)) <= date.today() < expected_delivery_date:
-            status = "Shipped"
-        if expected_delivery_date == date.today():
-            status = "Out for delivery"
-        if date.today() > expected_delivery_date:
-            status = "Complete"
+    if not customer_id or not order_id:
+        return jsonify({"message": "Missing customer_id or order_id"}), 400
 
-        return jsonify({
-            "message": "Order tracking information",
-            "customer_id": customer_id,
-            "order_id": order_id,
-            "order_date_time": order_date_time,
-            "expected_delivery_date": expected_delivery_date,
-            "status": status
-        }), 200
+    order = Order.query.filter_by(customer_id=customer_id, id=order_id).first()
+
+    if not order:
+            return jsonify({"message": "Order not found"}), 404
+
+    order_date_time = order.order_date_time
+    expected_delivery_date = order_date_time.date()+timedelta(days=5)
+    
+    if order_date_time.date() <= date.today() < (order_date_time.date()+timedelta(days=3)):
+        status = "Order in process"
+    if (order_date_time.date()+timedelta(days=3)) <= date.today() < expected_delivery_date:
+        status = "Shipped"
+    if expected_delivery_date == date.today():
+        status = "Out for delivery"
+    if date.today() > expected_delivery_date:
+        status = "Complete"
+
+    return jsonify({
+        "message": "Order tracking information",
+        "customer_id": customer_id,
+        "order_id": order_id,
+        "order_date_time": order_date_time,
+        "expected_delivery_date": expected_delivery_date,
+        "status": status
+    }), 200
 
 @app.errorhandler(Exception)
 def handle_exception(e):
