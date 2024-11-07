@@ -697,6 +697,49 @@ def delete_order(id):
     return jsonify({"message": "Order deleted successfully", "order_id": id}), 200
 
 
+# @app.route('/orders/track-status/', methods=['GET'])
+# def track_order_by_id():
+#     customer_id = request.args.get('customer_id', type=int)
+#     order_id = request.args.get('order_id', type=int)
+
+#     if not customer_id or not order_id:
+#         return jsonify({"message": "Missing customer_id or order_id"}), 400
+
+#     order = Order.query.filter_by(customer_id=customer_id, id=order_id).first()
+
+#     if not order:
+#         return jsonify({"message": "Order not found"}), 404
+
+#     order_date_time = order.order_date_time
+#     expected_delivery_date = order.expected_delivery_date
+
+#     try:
+#         today = date.today()
+
+#         # Order In Process: Before expected delivery date, but not shipped
+#         if order_date_time.date() == today:
+#             status = 'Order in process'
+#         elif order_date_time.date() <= today < (expected_delivery_date - timedelta(days=2)):
+#             status = 'Order in process'
+
+#         # Shipped: Two days before the expected delivery date
+#         elif (expected_delivery_date - timedelta(days=2)) <= today < expected_delivery_date:
+#             status = 'Shipped'
+
+#         # Out for Delivery: Expected delivery date
+#         elif expected_delivery_date == today:
+#             status = 'Out for delivery'
+
+#         # Complete: After expected delivery date
+#         elif today > expected_delivery_date:
+#             status = 'Complete'
+
+#         return jsonify({'status': status}), 200
+#     except Exception as e:
+#         app.logger.exception("Error tracking order status: %s", e)
+#         return "Internal Server Error", 500
+
+
 @app.route('/orders/track-status/', methods=['GET'])
 def track_order_by_id():
     
@@ -712,25 +755,27 @@ def track_order_by_id():
             return jsonify({"message": "Order not found"}), 404
 
     order_date_time = order.order_date_time
-    expected_delivery_date = order_date_time.date()+timedelta(days=5)
-    
-    if order_date_time.date() <= date.today() < (order_date_time.date()+timedelta(days=3)):
-        status = "Order in process"
-    if (order_date_time.date()+timedelta(days=3)) <= date.today() < expected_delivery_date:
-        status = "Shipped"
-    if expected_delivery_date == date.today():
-        status = "Out for delivery"
-    if date.today() > expected_delivery_date:
-        status = "Complete"
+    expected_delivery_date = order.expected_delivery_date
+    today = date.today()
 
-    return jsonify({
-        "message": "Order tracking information",
-        "customer_id": customer_id,
-        "order_id": order_id,
-        "order_date_time": order_date_time,
-        "expected_delivery_date": expected_delivery_date,
-        "status": status
-    }), 200
+    status = 'Unknown'
+    
+    if order_date_time.date() == today:
+        status = 'Order in process'
+    elif order_date_time.date() <= today < (expected_delivery_date-timedelta(days=2)):
+        status = 'Order in process'
+    elif (expected_delivery_date-timedelta(days=2)) <= today < expected_delivery_date:
+        status = 'Shipped'
+    elif expected_delivery_date == today:
+        status = 'Out for delivery'
+    elif today > expected_delivery_date:
+        status = 'Complete'
+    else:
+        status = "Order status not determined"
+
+    app.logger.debug(f"Order Date: {order_date_time}, Expected Delivery Date: {expected_delivery_date}, Today: {today}")
+
+    return jsonify({"status": status}), 200
 
 @app.errorhandler(Exception)
 def handle_exception(e):
