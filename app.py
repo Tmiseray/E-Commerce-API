@@ -757,21 +757,21 @@ def track_order_by_id():
     order_date_time = order.order_date_time
     expected_delivery_date = order.expected_delivery_date
     today = date.today()
-
+    order_date = order_date_time.date()
     status = 'Unknown'
     
-    if order_date_time.date() == today:
+    if order_date == today:
         status = 'Order in process'
-    elif order_date_time.date() <= today < (expected_delivery_date-timedelta(days=2)):
+    elif order_date <= today < (order_date+timedelta(days=3)):
         status = 'Order in process'
-    elif (expected_delivery_date-timedelta(days=2)) <= today < expected_delivery_date:
+    elif (order_date+timedelta(days=3)) <= today < expected_delivery_date:
         status = 'Shipped'
     elif expected_delivery_date == today:
         status = 'Out for delivery'
     elif today > expected_delivery_date:
         status = 'Complete'
-    else:
-        status = "Order status not determined"
+    # else:
+    #     status = "Order status not determined"
 
     app.logger.debug(f"Order Date: {order_date_time}, Expected Delivery Date: {expected_delivery_date}, Today: {today}")
 
